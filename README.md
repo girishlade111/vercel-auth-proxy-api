@@ -1,68 +1,124 @@
-# PaceBeats - Spotify Strava Integration
+# PaceBeats — Spotify × Strava Integration
 
-PaceBeats is an application that creates pace-optimized Spotify playlists based on your Strava running routes.
+**PaceBeats** ("Run to the Perfect Beat") analyzes your Strava running routes and builds custom Spotify playlists with the perfect BPM to help you hit your target pace — even on hills. Sign in with Spotify and Strava via OAuth, pick a route, and generate a tempo-matched playlist.
 
-## Current Status
+This Next.js app also works as an **auth proxy layer**: server-side API routes hold the OAuth client secrets and proxy Spotify/Strava calls so the browser never sees them.
 
-The app is currently set up in "demo mode," which allows you to explore the UI and functionality without requiring actual API connections. This makes it easy to deploy and test the app before setting up the API integrations.
+Built by Girish Lade — https://ladestack.in
 
-## Adding API Connections Later
+## What it does
 
-When you're ready to add the real API connections, follow these steps:
+- **Spotify OAuth sign-in** — NextAuth-powered auth flow (`/api/auth/[...nextauth]`), sign-in/error pages included.
+- **Strava route import** — fetch your routes (`/strava-routes`, `/api/strava/routes`), inspect a route's detail (`/routes/[id]`).
+- **BPM calculator** — `lib/bpm-calculator.ts` derives a target tempo from pace/grade so music matches your stride.
+- **Playlist generation** — search Spotify tracks by BPM (`/api/spotify/search-by-bpm`) and create playlists (`/create-playlist`, `/api/spotify/create-playlist`, `/api/spotify/generate-playlist`).
+- **Library browsing** — view your Spotify playlists and profile (`/playlists`, `/profile`).
+- **Demo mode** — `lib/mock-data.ts` + `demo-mode-indicator.tsx` let you explore the full UI without any API keys.
+- **Debug/admin tooling** — `/admin/auth-debug`, `/admin/strava-debug`, `/spotify-proxy-test`, `/api/debug/*` panels for inspecting env config, connection status, and proxy health.
+- **Route health check** — `GET /api/health` → `{ status: "ok", timestamp }`.
+- **Env validation** — `lib/env-validation.ts` fails fast with clear errors when required variables are missing.
+- **Maps proxy** — `/api/maps/static` proxies static-map tiles so API keys stay server-side.
+- Dark / light mode (`next-themes`), shadcn/ui + Tailwind, responsive layout.
 
-### 1. Set Up Strava API
+## Tech stack
 
-1. Go to [Strava API Settings](https://www.strava.com/settings/api)
-2. Create a new application
-3. Set the following:
-   - Application Name: PaceBeats (or your preferred name)
-   - Website: Your app's URL (e.g., https://your-app.vercel.app)
-   - Authorization Callback Domain: your-app.vercel.app (without https://)
-4. After creating the application, note your Client ID and Client Secret
+- [Next.js](https://nextjs.org/) 15 (App Router, React 19) + [TypeScript](https://www.typescriptlang.org/)
+- [NextAuth.js](https://next-auth.js.org/) (Auth.js) — Spotify + Strava OAuth providers
+- [Tailwind CSS](https://tailwindcss.com/) + [shadcn/ui](https://ui.shadcn.com/) (Radix UI primitives)
+- [Spotify Web API](https://developer.spotify.com/documentation/web-api) — playlists, profile, search, audio features
+- [Strava API v3](https://developers.strava.com/) — routes, athlete tokens
+- [lucide-react](https://lucide.dev/) icons, [recharts](https://recharts.org/), [nodemailer](https://nodemailer.com/)
+- `middleware.ts` — route protection / auth guard
 
-### 2. Set Up Spotify API
+## Quick start
 
-1. Go to [Spotify Developer Dashboard](https://developer.spotify.com/dashboard)
-2. Create a new application
-3. Set the following:
-   - App name: PaceBeats (or your preferred name)
-   - App description: Create pace-optimized playlists for running routes
-   - Redirect URI: https://your-app.vercel.app/api/auth/callback/spotify
-4. After creating the application, note your Client ID and Client Secret
+Requires Node.js 18+ and npm.
 
-### 3. Add Environment Variables
+```sh
+# 1. Clone
+git clone https://github.com/girishlade111/vercel-auth-proxy-api.git
+cd vercel-auth-proxy-api
 
-Add the following environment variables to your Vercel project:
+# 2. Install
+npm install --legacy-peer-deps
 
-\`\`\`
-NEXTAUTH_URL=https://your-app.vercel.app
-NEXTAUTH_SECRET=your_generated_secret_here
+# 3. Configure (see "Environment variables" below)
+cp .env.example .env.local  # if present, else create .env.local
 
-STRAVA_CLIENT_ID=your_strava_client_id
-STRAVA_CLIENT_SECRET=your_strava_client_secret
-
-SPOTIFY_CLIENT_ID=your_spotify_client_id
-SPOTIFY_CLIENT_SECRET=your_spotify_client_secret
-\`\`\`
-
-For local development, create a `.env.local` file with these variables.
-
-### 4. Remove Demo Mode (Optional)
-
-If you want to completely remove the demo mode:
-
-1. Edit `app/api/auth/[...nextauth]/route.ts` and remove the Credentials provider
-2. Update the sign-in page to remove the demo mode option
-3. Remove the demo mode indicator and related components
-
-## Development
-
-\`\`\`bash
-# Install dependencies
-npm install
-
-# Run the development server
+# 4. Dev server
 npm run dev
-\`\`\`
+# → http://localhost:3000
+```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Without API keys the app runs in **demo mode** — all pages work against mock data.
+
+## Environment variables
+
+| Variable | Required for | Notes |
+|---|---|---|
+| `NEXTAUTH_URL` | Full OAuth flow | e.g. `https://your-app.vercel.app` |
+| `NEXTAUTH_SECRET` | Session encryption | Random 32+ char string |
+| `SPOTIFY_CLIENT_ID` | Spotify OAuth + API | [Spotify Developer Dashboard](https://developer.spotify.com/dashboard) |
+| `SPOTIFY_CLIENT_SECRET` | Spotify OAuth + API | Same dashboard |
+| `STRAVA_CLIENT_ID` | Strava OAuth + API | Numeric. [Strava API settings](https://www.strava.com/settings/api) |
+| `STRAVA_CLIENT_SECRET` | Strava OAuth + API | Same settings page |
+| `MAPBOX_TOKEN` / `GOOGLE_MAPS_KEY` | Static-map proxy (`/api/maps/static`) | Only if you use that route |
+
+Redirect URIs to register:
+- Spotify: `<NEXTAUTH_URL>/api/auth/callback/spotify`
+- Strava: callback domain = your app's domain (no scheme)
+
+## Project structure
+
+```
+vercel-auth-proxy-api/
+├── app/
+│   ├── page.tsx                  # Landing: "Run to the Perfect Beat"
+│   ├── dashboard/                # Main app dashboard
+│   ├── create-playlist/          # BPM playlist builder
+│   ├── playlists/ profile/       # Spotify library + profile
+│   ├── routes/ strava-routes/    # Strava route browsing + detail
+│   ├── algorithm/                # Explains the BPM algorithm
+│   ├── test-runs/                # Example runs (parkrun, fun run)
+│   ├── auth/signin/ auth/error/  # NextAuth pages
+│   ├── admin/auth-debug/ admin/strava-debug/  # Debug consoles
+│   ├── spotify-proxy-test/ spotify-test/ strava-test/
+│   └── api/
+│       ├── auth/[...nextauth]/   # NextAuth handler
+│       ├── spotify/*             # Server-side Spotify proxy routes
+│       ├── strava/*              # Server-side Strava proxy routes
+│       ├── admin/check-strava-env/ admin/test-spotify-connection/
+│       ├── maps/static/          # Static-map proxy
+│       ├── routes/               # Local route CRUD
+│       ├── check-env/ debug/ health/
+├── lib/
+│   ├── auth.ts auth-utils.ts auth-proxy.ts  # Session + proxy helpers
+│   ├── spotify.ts spotify-auth.ts spotify-proxy.ts
+│   ├── strava.ts
+│   ├── bpm-calculator.ts         # Pace → BPM algorithm
+│   ├── env-validation.ts         # Startup env check
+│   └── mock-data.ts              # Demo-mode data
+├── components/                   # App components (dashboard-client, connect-accounts…)
+├── components/ui/                # shadcn/ui primitives
+├── middleware.ts                 # Auth middleware
+└── next.config.mjs
+```
+
+## How it works
+
+1. User signs in with Spotify (NextAuth); optionally connects Strava in `/connect` (`connect-accounts.tsx`).
+2. App fetches Strava routes server-side (`/api/strava/routes`) — tokens stay on the server.
+3. `bpm-calculator.ts` converts target pace + elevation into a target BPM range.
+4. Server searches Spotify for tracks in that BPM window and creates a playlist via `/api/spotify/create-playlist`.
+5. Every third-party call goes through a server route, so client secrets are never exposed to the browser — that's the "auth proxy" pattern this repo is named for.
+
+## Deployment notes
+
+- **Needs a Node server (SSR)** — cannot be statically exported: API routes, NextAuth, middleware, and server actions require runtime execution.
+- Natural fit: **Vercel** (`vercel deploy`) or any Node host (`npm run build && npm run start`).
+- Set all environment variables on the host; never commit `.env*` (it's gitignored).
+- Static deploy skipped deliberately — no GitHub Pages/Netlify deploy for this repo (server + OAuth secrets required).
+
+---
+
+Built by Girish Lade — https://ladestack.in
